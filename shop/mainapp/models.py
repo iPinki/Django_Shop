@@ -1,9 +1,29 @@
+import sys
+from PIL import Image
+from io import BytesIO
+
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
+from django.core.files.uploadedfile import InMemoryUploadedFile
+from django.urls import reverse
+
 
 User = get_user_model()  # We want to get users which there is in settings (settings.AUTH_USER_MODEL)
+
+
+def get_product_url(obj, viewname):
+    ct_model = obj.__class__._meta.model_name
+    return reverse(viewname, kwargs={'ct_model': ct_model, 'slug': obj.slug})
+
+
+class MinResolutionErrorException(Exception):
+    pass
+
+
+class MaxResolutionErrorException(Exception):
+    pass
 
 
 class LatestProductsManager:
@@ -47,6 +67,10 @@ class Category(models.Model):
 
 
 class Product(models.Model):
+    MIN_RESOLUTION = (400, 400)
+    MAX_RESOLUTION = (800, 800)
+    MAX_IMAGE_SIZE = 3145728
+
     class Meta:
         abstract = True
 
@@ -61,6 +85,31 @@ class Product(models.Model):
     def __str__(self):
         return self.title
 
+    def save(self, *args, **kwargs):
+        #     image = self.image
+        #     img = Image.open(image)
+        #     min_height, min_width = self.MIN_RESOLUTION
+        #     max_height, max_width = self.MAX_RESOLUTION
+        #     if img.height < min_height or img.width < min_width:
+        #         raise MinResolutionErrorException('Разрешение изображения меньше минимального!')
+        #     if img.height > max_height or img.width > max_width:
+        #         raise MaxResolutionErrorException('Разрешение изображения больше максимального!')
+        #     super().save(*args, **kwargs)
+
+        # Forced image cropping
+        image = self.image
+        img = Image.open(image)
+        new_img = img.convert('RGB')
+        resized_new_img = new_img.resize((200, 200), Image.ANTIALIAS)
+        filestream = BytesIO()
+        resized_new_img.save(filestream, 'JPEG', quality=90)
+        filestream.seek(0)
+        name = '{}.{}'.format(*self.image.name.split('.'))
+        self.image = InMemoryUploadedFile(
+            filestream, 'ImageField', name, 'jpeg/image', sys.getsizeof(filestream), None
+        )
+        super().save(*args, **kwargs)
+
 
 class Notebook(Product):
     diagonal = models.CharField(max_length=255, verbose_name='Диагональ')
@@ -72,6 +121,9 @@ class Notebook(Product):
 
     def __str__(self):
         return '{} : {}'.format(self.category.name, self.title)
+
+    def get_absolut_url(self):
+        return get_product_url(self, 'product_detail')
 
 
 class Smartphone(Product):
@@ -87,6 +139,9 @@ class Smartphone(Product):
 
     def __str__(self):
         return '{} : {}'.format(self.category.name, self.title)
+
+    def get_absolut_url(self):
+        return get_product_url(self, 'product_detail')
 
 
 class CartProduct(models.Model):
