@@ -1,9 +1,24 @@
-from PIL import Image
-
-from django.forms import ModelChoiceField, ModelForm, ValidationError
+# from PIL import Image
+from django.forms import ModelChoiceField, ModelForm
 from django.contrib import admin
 from django.utils.safestring import mark_safe
+
 from .models import *
+
+
+class SmartphoneAdminForm(ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        instance = kwargs.get('instance')
+        if instance and not instance.sd:
+            self.fields['sd_volume_max'].widget.attrs.update({
+                'readonly': True, 'style': 'background: lightgrey'
+            })
+
+    def clean(self):
+        if not self.cleaned_data['sd']:
+            self.cleaned_data['sd_volume_max'] = None
+        return self.cleaned_data
 
 
 class NotebookAdminForm(ModelForm):
@@ -16,6 +31,7 @@ class NotebookAdminForm(ModelForm):
                         При загрузки изображения с разрешением больше {}x{} оно будет обрезано!
                 </span>""".format(*Product.MAX_RESOLUTION)
             )
+
 
 # def clean_image(self):
 #     image = self.cleaned_data['image']
@@ -41,6 +57,9 @@ class NotebookAdmin(admin.ModelAdmin):
 
 
 class SmartphoneAdmin(admin.ModelAdmin):
+    change_form_template = 'admin.html'
+    form = SmartphoneAdminForm
+
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'category':
             return ModelChoiceField(Category.objects.filter(slug='smartphone'))
